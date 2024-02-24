@@ -8,6 +8,7 @@ import (
 	"go_jwt_authentication/modules"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -47,7 +48,7 @@ func VerifyPassword(userPassword string, providedPassword string) (bool, string)
 
 }
 
-func Signup() gin.HandlerFunc {
+func Sighup() gin.HandlerFunc {
 	return func(c *gin.Context) {
 
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
@@ -130,7 +131,7 @@ func Login() gin.HandlerFunc {
 		err := userCollection.FindOne(ctx, bson.M{"email": user.Email}).Decode(&foundUser)
 		defer cancel()
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, g.H{"error": "Email and Password not match"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Email and Password not match"})
 			return
 		}
 
@@ -147,7 +148,7 @@ func Login() gin.HandlerFunc {
 		}
 
 		token, refreshToken, _ := helper.GenerateAllTokens(*foundUser.Email, *foundUser.First_Name, *foundUser.Last_Name, *foundUser.User_Type, *foundUser.User_Id)
-		helper.UpdateAllTokens(token, refreshToken, foundUser.User_Id)
+		helper.UpdateAllTokens(token, refreshToken, *foundUser.User_Id)
 
 		err = userCollection.FindOne(ctx, bson.M{"user_id": foundUser.User_Id}).Decode(&foundUser)
 
@@ -161,30 +162,86 @@ func Login() gin.HandlerFunc {
 
 }
 
-func GetUsers() {
-
-}
-
-func GetUser() gin.HandlerFunc {
-	return func(ctx *gin.Context) {
-		userId := ctx.Param("user_id")
-
-		if err := helper.MatchUserTypeUid(ctx, userId); err != nil {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+func GetUsers() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		err := helper.CheckUserType(c, "ADMIN")
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
+		defer cancel()
+
+		//pagination in go lang
+
+		recordPerPage, err := strconv.Atoi(c.Query("recordPerPage"))
+		if err != nil || recordPerPage < 1 {
+			recordPerPage = 10
+		}
+
+		page, err1 := strconv.Atoi(c.Query("page"))
+
+		if err1 != nil || page < 1 {
+			page = 1
+		}
+		startIndex := (page - 1) * recordPerPage
+		startIndex, err = strconv.Atoi(c.Query("startIndex"))
+		matchStage := bson.D{{Key: "$match", Value: bson.D{{}}}}
+
+		//groupStage := bson.D{{Key: "$group", Value: bson.D{{Key: "_id", Value: bson.D{{Key: "_id", Value: "null"}}, {Key: "total_count", Value: bson.D{{"$sum", 1}}}, {Key: "data", Value: bson.D{{"$push", "$$Root"}}}}}}}
+		groupStage := bson.D{
+			{Key: "$group",
+				Value: bson.D{{
+					Key:   "_id",
+					Value: "null"},
+					{Key: "total_count",
+						Value: bson.D{{Key: "$sum", Value: 1}}},
+					{Key: "data", Value: bson.D{{Key: "$push", Value: "$$ROOT"}}},
+				}},
+		}
+		projectStage := bson.D{
+			{Key: "$project", Value: bson.D{{Key: "_id", Value: 0},
+				{Key: "total_count", Value: 1},
+				{Key: "user_item", Value: bson.D{{Key: "$slice", Value: []interface{}{"$data", startIndex, recordPerPage}}}}}},
+		}
+
+		result, err := userCollection.Aggregate(ctx, mongo.Pipeline{
+			matchStage, groupStage, projectStage})
+		defer cancel()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "error occured while listing user items"})
+
+		}
+		var allUsers []bson.M
+
+		if err = result.All(ctx, &allUsers); err != nil {
+			log.Fatal(err)
+
+		}
+		c.JSON(http.StatusOK, allUsers[0])
+	}
+}
+
+func GetUser() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userId := c.Param("user_id")
+
+		if err := helper.MatchUserTypeUid(c, userId); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
 
 		var user modules.User
 
 		err := userCollection.FindOne(ctx, bson.M{"user_id": userId}).Decode(&user)
 		defer cancel()
 		if err != nil {
-			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
-		ctx.JSON(http.StatusOK, user)
+		c.JSON(http.StatusOK, user)
 	}
 }

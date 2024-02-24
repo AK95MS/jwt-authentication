@@ -2,6 +2,7 @@ package routes
 
 import (
 	controller "go_jwt_authentication/controller"
+	"go_jwt_authentication/middleware"
 
 	"github.com/gin-gonic/gin"
 )

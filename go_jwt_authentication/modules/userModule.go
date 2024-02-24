@@ -1,14 +1,13 @@
 package modules
 
 import (
-	databases "go_jwt_authenticaion/databases"
 	"time"
 
-	"go.mangodb.org./mango-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type User struct {
-	Id            primitive.ObjectId `bson:"_id"`
+	Id            primitive.ObjectID `bson:"_id"`
 	First_Name    *string            `json:"First_Name" validate:"required,min=2,max=100"`
 	Last_Name     *string            `json:"Last_Name" validate:"required,min=2,max=100"`
 	Password      *string            `json:"Password" validate:"required,min=6"`
