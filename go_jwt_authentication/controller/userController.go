@@ -50,26 +50,23 @@ func VerifyPassword(userPassword string, providedPassword string) (bool, string)
 
 func Sighup() gin.HandlerFunc {
 	return func(c *gin.Context) {
-
+		log.Fatal("signup request")
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
-
+		defer cancel()
 		var user modules.User
+		log.Fatal("signup request")
 
 		if err := c.Bind(&user); err != nil {
-
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-
 			return
 		}
 
 		validationErr := validate.Struct(user)
-
 		if validationErr != nil {
 			log.Fatal("Error While Validating User Request")
 			c.JSON(http.StatusBadRequest, gin.H{"error": validationErr.Error()})
 			return
 		}
-
 		Email_count, err := userCollection.CountDocuments(ctx, bson.M{"email": user.Email})
 		defer cancel()
 		if err != nil {
@@ -97,8 +94,8 @@ func Sighup() gin.HandlerFunc {
 		user.Updated_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
 
 		user.Id = primitive.NewObjectID()
+		//user.User_Id = user.Id.Hex()
 
-		user.User_Id = user.Id.Hex()
 		token, refresh_token, _ := helper.GenerateAllTokens(*user.Email, *user.First_Name, *user.Last_Name, *user.User_Type, *user.User_Id)
 
 		user.Token = &token
